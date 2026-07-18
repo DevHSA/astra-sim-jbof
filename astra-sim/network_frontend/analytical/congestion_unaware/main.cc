@@ -13,6 +13,7 @@ LICENSE file in the root directory of this source tree.
 #include <json/json.hpp>
 #include <unistd.h>
 #include <iostream>
+#include <cstdlib>
 
 using namespace AstraSim;
 using namespace Analytical;
@@ -241,6 +242,14 @@ int main(int argc, char* argv[]) {
     //     event_queue->proceed();
     // }
 
+    // Per-NPU "Checking ..." heartbeat lines are pure debug and are drained
+    // line-by-line by the Python controller every event-queue pass (~2*num_npus
+    // lines/pass), which dominates startup at many instances. They carry NO data
+    // the controller parses (it keys only on the per-NPU report line, "Waiting",
+    // and "Checking Non-Exited Systems ..."), so they are OFF by default and can
+    // be re-enabled for debugging via ASTRA_VERBOSE_NPU_CHECK=1.
+    const bool verbose_npu_check = (std::getenv("ASTRA_VERBOSE_NPU_CHECK") != nullptr);
+
     bool exit = false;
     while (!exit) {
       if(!event_queue->finished()){
@@ -252,7 +261,7 @@ int main(int argc, char* argv[]) {
 
       for (std::size_t idx = 0; idx < end_npu_ids.size(); ++idx) {
         int npu_id = end_npu_ids[idx];
-        cout << "Checking End NPU " << npu_id << " ..." << endl;
+        if (verbose_npu_check) cout << "Checking End NPU " << npu_id << " ..." << endl;
         // Only proceed if the workload has finished its iteration
         if (!systems[npu_id]->workload->is_sleep && systems[npu_id]->workload->is_finished) {
           systems[npu_id]->workload->report();
@@ -289,7 +298,7 @@ int main(int argc, char* argv[]) {
       for (std::size_t idx = 0; idx < start_npu_ids.size(); ++idx) {
         int npu_id = start_npu_ids[idx];
         // Only proceed if the workload has finished its iteration
-        cout << "Checking Managed Systems for Controller NPU " << npu_id << " ..." << endl;
+        if (verbose_npu_check) cout << "Checking Managed Systems for Controller NPU " << npu_id << " ..." << endl;
         if (!systems[npu_id]->workload->is_sleep && systems[npu_id]->workload->is_finished) {
           systems[npu_id]->workload->report();
           AstraSim::LoggerFactory::get_logger("workload")->info("Waiting");
