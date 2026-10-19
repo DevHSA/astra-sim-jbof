@@ -287,18 +287,18 @@ void AnalyticalMemory::call(EventType type, CallData* data) {
 }
 
 uint64_t AnalyticalMemory::get_mem_runtime(uint64_t tensor_size) {
-  // Device term: access latency (ns) + bytes / bandwidth (GB/s == byte/ns).
-  uint64_t runtime = mem_latency;
-  if (mem_bw > 0) {
-    runtime += static_cast<uint64_t>(static_cast<double>(tensor_size) / mem_bw);
-  }
-  // Network-link term for network-attached tiers (JBOF/COLDSTORE). Node-local
-  // tiers leave link_bw/link_latency at 0, so nothing is added.
+  // Fixed device access latency (ns) + device read time (bytes / bandwidth; GB/s == byte/ns).
+  double runtime = static_cast<double>(mem_latency);
+  double dev_xfer = (mem_bw > 0) ? (static_cast<double>(tensor_size) / mem_bw) : 0.0;
+  // Network-attached tiers (JBOF/COLDSTORE): the device read and the network-link
+  // transfer PIPELINE, so the transfer cost is the SLOWER of the two (max), not their
+  // sum. Fixed device + link access latencies still add. Node-local tiers leave
+  // link_bw/link_latency at 0, so only the device term applies.
   if (link_bw > 0) {
-    runtime += link_latency
-        + static_cast<uint64_t>(static_cast<double>(tensor_size) / link_bw);
-  } else if (link_latency > 0) {
-    runtime += link_latency;
+    double lnk_xfer = static_cast<double>(tensor_size) / link_bw;
+    runtime += static_cast<double>(link_latency) + (dev_xfer > lnk_xfer ? dev_xfer : lnk_xfer);
+  } else {
+    runtime += dev_xfer + static_cast<double>(link_latency);
   }
-  return runtime;
+  return static_cast<uint64_t>(runtime);
 }
